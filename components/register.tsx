@@ -1,3 +1,4 @@
+import { useAuthActions } from '@convex-dev/auth/react';
 import React, { useState } from 'react';
 import {
   View,
@@ -8,65 +9,81 @@ import {
   StatusBar,
   ImageBackground,
 } from 'react-native';
+import { generateKeyPair } from '../utils';
+import { encodeBase64 } from 'tweetnacl-util';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { api } from '../convex/_generated/api';
+import { useAction, useMutation } from 'convex/react';
+import { NavigationProp, useNavigation } from '@react-navigation/native';
+import { RootStackParamList } from '../App';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { AuthComponent } from './login';
 
+type registerScreenProp = NativeStackNavigationProp<RootStackParamList, "Register">
 const Register = () => {
+  const { signIn } = useAuthActions();
+  const navigation = useNavigation<registerScreenProp>()
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
-
-  const handleRegister = () => {
-    // Handle registration functionality here
+  const [error, setError] = useState('');
+  const createVerificationCode = useAction(api.users.sendEmail);
+  const handleRegister = async () => {
+    if (password.localeCompare(confirmPassword) !== 0) {
+      setError('Error: Password not match');
+      return;
+    }
+    await createVerificationCode({
+      email:email,
+      type:'signUp'
+    })
+    navigation.navigate('Verification', {email,password, type:'signUp'})
   };
 
   return (
-    <ImageBackground
-      source={require('../assets/images/login_imagef1.jpg')} // Replace with your image path
-      style={styles.background}
-      resizeMode="cover"
-    >
-      <View style={styles.overlay}>
-        <StatusBar barStyle="light-content" />
-        <Text style={styles.title}>Create an Account</Text>
+    <AuthComponent>
+      <Text style={styles.title}>Create an Account</Text>
 
-        <TextInput
-          style={styles.input}
-          placeholder="Email"
-          placeholderTextColor="#999"
-          value={email}
-          onChangeText={setEmail}
-          keyboardType="email-address"
-        />
+      <TextInput
+        style={styles.input}
+        placeholder="Email"
+        placeholderTextColor="#999"
+        value={email}
+        onChangeText={setEmail}
+        keyboardType="email-address"
+      />
 
-        <TextInput
-          style={styles.input}
-          placeholder="Password"
-          placeholderTextColor="#999"
-          value={password}
-          onChangeText={setPassword}
-          secureTextEntry
-        />
+      <TextInput
+        style={styles.input}
+        placeholder="Password"
+        placeholderTextColor="#999"
+        value={password}
+        onChangeText={setPassword}
+        secureTextEntry
+      />
 
-        <TextInput
-          style={styles.input}
-          placeholder="Confirm Password"
-          placeholderTextColor="#999"
-          value={confirmPassword}
-          onChangeText={setConfirmPassword}
-          secureTextEntry
-        />
+      <TextInput
+        style={styles.input}
+        placeholder="Confirm Password"
+        placeholderTextColor="#999"
+        value={confirmPassword}
+        onChangeText={setConfirmPassword}
+        secureTextEntry
+      />
 
-        <TouchableOpacity style={styles.button} onPress={handleRegister}>
-          <Text style={styles.buttonText}>Register</Text>
+      <TouchableOpacity style={styles.button} onPress={handleRegister}>
+        <Text style={styles.buttonText}>Register</Text>
+      </TouchableOpacity>
+
+      <View style={styles.footer}>
+        <Text style={styles.footerText}>Already have an account?</Text>
+        <TouchableOpacity onPress={() => {
+          navigation.navigate('Login')
+        }}>
+          <Text style={styles.signIn}>Sign In</Text>
         </TouchableOpacity>
-
-        <View style={styles.footer}>
-          <Text style={styles.footerText}>Already have an account?</Text>
-          <TouchableOpacity>
-            <Text style={styles.signIn}>Sign In</Text>
-          </TouchableOpacity>
-        </View>
       </View>
-    </ImageBackground>
+    </AuthComponent>
   );
 };
 
@@ -87,8 +104,8 @@ const styles = StyleSheet.create({
     color: '#fff',
     textAlign: 'center',
     marginBottom: 270,
-      fontWeight: '700',
-    
+    fontWeight: '700',
+
   },
   input: {
     backgroundColor: 'rgba(51, 51, 51, 0.7)', // Transparent background

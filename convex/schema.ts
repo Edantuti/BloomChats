@@ -17,6 +17,11 @@ const schema = defineSchema({
         content:v.string(),
         groupId:v.id('groups')
     }),
+    verification:defineTable({
+        email:v.string(),
+        type:v.union(v.literal('signIn'), v.literal('signUp')),
+        code:v.string()
+    }),
     sessions:defineTable({
         deviceId:v.string(),
         authSessionId:v.id('authSessions')

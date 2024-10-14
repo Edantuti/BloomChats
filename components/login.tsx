@@ -1,4 +1,7 @@
-import React, { useState } from 'react';
+import { useAuthActions } from '@convex-dev/auth/react';
+import { useNavigation } from '@react-navigation/native';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import React, { ReactNode, useState } from 'react';
 import {
   View,
   Text,
@@ -8,24 +11,42 @@ import {
   StatusBar,
   ImageBackground,
 } from 'react-native';
+import { RootStackParamList } from '../App';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useAction, useConvexAuth, useMutation } from 'convex/react';
+import { api } from '../convex/_generated/api';
+
+type loginScreenProp = NativeStackNavigationProp<RootStackParamList, "Login">
 
 const Login = () => {
+  const { isLoading, isAuthenticated } = useConvexAuth();
+
+  const navigation = useNavigation<loginScreenProp>();
+  if (isAuthenticated) {
+    directChat();
+  }
+
+  async function directChat() {
+    const localEmail = await AsyncStorage.getItem('email');
+
+    if (localEmail) {
+      navigation.navigate('Chat', { email: localEmail });
+    }
+  }
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-
-  const handleLogin = () => {
-    // Handle login functionality here
+  const createVerificationCode = useAction(api.users.sendEmail);
+  const handleLogin = async () => {
+    await createVerificationCode({
+      email:email,
+      type:'signIn'
+    })
+    navigation.navigate('Verification',{email:email, password:password, type:'signIn'});
   };
 
   return (
-    <ImageBackground
-      source={require('../assets/images/login_imagef1.jpg')} // Replace with your image path
-      style={styles.background}
-      resizeMode="cover"
-    >
-      <View style={styles.overlay}>
-        <StatusBar barStyle="light-content" />
-        <Text style={styles.title}>Welcome Back!</Text>
+    <AuthComponent>
+      {!isLoading ? (<><Text style={styles.title}>Welcome Back!</Text>
 
         <TextInput
           style={styles.input}
@@ -55,14 +76,30 @@ const Login = () => {
 
         <View style={styles.footer}>
           <Text style={styles.footerText}>Don't have an account?</Text>
-          <TouchableOpacity>
+          <TouchableOpacity onPress={() => {
+            navigation.navigate("Register")
+          }}>
             <Text style={styles.signUp}>Sign Up</Text>
           </TouchableOpacity>
-        </View>
-      </View>
-    </ImageBackground>
+        </View></>) : (<Text>Loading</Text>)}
+    </AuthComponent>
   );
 };
+
+export const AuthComponent = ({ children }: { children: ReactNode }) => {
+  return (
+    <ImageBackground
+      source={require('../assets/images/login_imagef1.jpg')} // Replace with your image path
+      style={styles.background}
+      resizeMode="cover"
+    >
+      <View style={styles.overlay}>
+        <StatusBar barStyle="light-content" />
+        {children}
+      </View>
+    </ImageBackground>
+  )
+}
 
 const styles = StyleSheet.create({
   background: {
@@ -80,16 +117,16 @@ const styles = StyleSheet.create({
     fontSize: 30,
     color: '#fff',
     textAlign: 'center',
-      marginBottom: 355,
-    fontWeight:'700',
+    marginBottom: 355,
+    fontWeight: '700',
   },
   input: {
     backgroundColor: 'rgba(51, 51, 51, 0.7)', // Transparent background
     color: '#fff', // Text color unaffected by opacity
-    padding: 15,
+    padding: 10,
     borderRadius: 10,
-      marginBottom: 20,
-    fontWeight:'900',
+    marginBottom: 20,
+    fontWeight: '900',
   },
   button: {
     backgroundColor: '#DD651B',

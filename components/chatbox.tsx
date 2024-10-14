@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -12,54 +12,107 @@ import {
   Pressable,
   TextInput,
 } from 'react-native';
+import { RootStackParamList } from '../App';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { NavigationProp, RouteProp } from '@react-navigation/native';
+import { Id } from "../convex/_generated/dataModel";
+import { api } from "../convex/_generated/api";
+import { useMutation, useQuery } from "convex/react";
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { decodeBase64 } from 'tweetnacl-util';
+import { box } from "tweetnacl";
+import { decrypt, encrypt } from '../utils';
+import Icon from 'react-native-vector-icons/FontAwesome6';
 
-const Chatbox = () => {
-  // Define different themes with corresponding background and bubble colors
-  const themes = [
-    { id: 1, name: 'Orange Theme', backgroundImage: require('../assets/images/chat1.jpg'), myBubble: '#DD651B', theirBubble: '#333' },
-    { id: 2, name: 'Violet Theme', backgroundImage: require('../assets/images/chat_violet.jpg'), myBubble: '#6A0DAD', theirBubble: '#333' },
-    { id: 3, name: 'Minimal Theme', backgroundImage: require('../assets/images/chat_white.jpg'), myBubble: '#333', theirBubble: '#000000' },
-    { id: 4, name: 'Yellow Theme', backgroundImage: require('../assets/images/chat_yellow.jpg'), myBubble: '#EAB613', theirBubble: '#333' },
-    { id: 5, name: 'Pink Theme', backgroundImage: require('../assets/images/chat_pink.jpg'), myBubble: '#DA70A5', theirBubble: '#333' },
-  ];
+const themes = [
+  { id: 1, name: 'Orange Theme', backgroundImage: require('../assets/images/chat1.jpg'), myBubble: '#DD651B', theirBubble: '#333' },
+  { id: 2, name: 'Violet Theme', backgroundImage: require('../assets/images/chat_violet.jpg'), myBubble: '#6A0DAD', theirBubble: '#333' },
+  { id: 3, name: 'Minimal Theme', backgroundImage: require('../assets/images/chat_white.jpg'), myBubble: '#333', theirBubble: '#000000' },
+  { id: 4, name: 'Yellow Theme', backgroundImage: require('../assets/images/chat_yellow.jpg'), myBubble: '#EAB613', theirBubble: '#333' },
+  { id: 5, name: 'Pink Theme', backgroundImage: require('../assets/images/chat_pink.jpg'), myBubble: '#DA70A5', theirBubble: '#333' },
+];
+
+type groupChatScreenProp = NativeStackNavigationProp<RootStackParamList, "GroupChat">;
+
+const Chatbox = ({ navigation, route }: { navigation: NavigationProp<groupChatScreenProp>, route: RouteProp<any> }) => {
+  const user = useQuery(api.users.getUser, { email: route.params!.email });
+  const publicKeyRetrieve = useMutation(api.users.getPublicKey);
+  const group = useQuery(api.groups.getGroup, { groupId: route.params!.groupId });
+  const messages = useQuery(api.message.getMessageByGroupId, { groupId: route.params!.groupId });
+  const create = useMutation(api.message.createMessage);
 
   // State to manage the current theme and message input
-  const [selectedTheme, setSelectedTheme] = useState(themes[1]); // Default theme is now Orange
+  const [selectedTheme, setSelectedTheme] = useState(themes[0]); // Default theme is now Orange
   const [isModalVisible, setModalVisible] = useState(false); // For the theme selector modal
-  const [message, setMessage] = useState(''); // State for message input
+  const [priv, setPriv] = useState<Uint8Array>();
+  const [message, setMessage] = useState<string>("");
+  const [receiveUser, setReceiveUser] = useState<any>();
+  const [sharedKey, setSharedKey] = useState<Uint8Array>();
+  const [expire, setExpire] = useState();
 
-  const messages = [
+  useEffect(() => {
+    const initializePrivateKeyAndSharedKey = async () => {
+      try {
+        const privd = await AsyncStorage.getItem('privKey');
+        const privKey = decodeBase64(privd!);
+        setPriv(privKey);
+        if (group?.data?.members) {
+          const recipient = group.data.members.find((member: any) => member.email !== route.params!.email);
+          if (recipient) {
+            setReceiveUser(recipient);
+            const pkey = await publicKeyRetrieve({ email: recipient!.email });
+            const shared = box.before(decodeBase64(pkey), privKey);
+            setSharedKey(shared);
+          }
+        }
+      } catch (error) {
+        console.error("Error setting keys:", error);
+      }
+    };
+    initializePrivateKeyAndSharedKey();
+  }, [group, user]);
 
-    { id: '1', text: 'Hey, how are you?', sender: 'me' },
-    { id: '2', text: 'I am good, thanks! How about you?', sender: 'them' },
-    { id: '3', text: 'What are you up to?', sender: 'me' },
-    { id: '4', text: 'Just working on some projects.', sender: 'them' },
+  function decryptMessage(message: string, from: Id<'users'>) {
+    try {
+      if (from !== user!._id && sharedKey) {
+        return decrypt(sharedKey, message);
+      } else if (sharedKey) {
+        return decrypt(sharedKey, message);
+      }
+    } catch (error) {
+      console.error("Decryption error:", error);
+    }
+  }
 
-  ]);
-
-  const renderMessage = ({ item }) => (
-    <View style={item.sender === 'me' ? [styles.myMessageBubble, { backgroundColor: selectedTheme.myBubble }] : [styles.theirMessageBubble, { backgroundColor: selectedTheme.theirBubble }]}>
-      <Text style={item.sender === 'me' ? styles.myMessageText : styles.theirMessageText}>
-        {item.text}
+  const renderMessage = ({ item }: { item: any }) => {
+    const message = decryptMessage(item.content, item.from)
+    if (!message) {
+      return <View></View>;
+    }
+    return (
+    <View style={item.from === user!._id ? [styles.myMessageBubble, { backgroundColor: selectedTheme.myBubble }] : [styles.theirMessageBubble, { backgroundColor: selectedTheme.theirBubble }]}>
+      <Text style={item.from === user!._id ? styles.myMessageText : styles.theirMessageText}>
+        {message}
       </Text>
-      {item.sender === 'me' && <View style={[styles.triangleMyMessage, { borderTopColor: selectedTheme.myBubble }]} />}
-      {item.sender === 'them' && <View style={[styles.triangleTheirMessage, { borderTopColor: selectedTheme.theirBubble }]} />}
-    </View>
-  );
-
+      {item.from === user!._id && <View style={[styles.triangleMyMessage, { borderTopColor: selectedTheme.myBubble }]} />}
+      {item.from !== user!._id && <View style={[styles.triangleTheirMessage, { borderTopColor: selectedTheme.theirBubble }]} />}
+    </View>)
+  }
   // Toggle modal visibility
   const toggleModal = () => {
     setModalVisible(!isModalVisible);
   };
 
   // Send message function
-  const sendMessage = () => {
-    if (message.trim()) {
-      const newMessage = { id: Date.now().toString(), text: message, sender: 'me' };
+  const sendMessage = async () => {
+    if (sharedKey && message.trim()) {
 
-      setMessages((prevMessages) => [...prevMessages, newMessage]); // Update messages state
-
-      setMessage(''); // Clear the input field after sending
+      await create({
+        groupId: route.params!.groupId,
+        from: user!._id,
+        content: encrypt(sharedKey, message.trim()),
+      });
+      setMessage('');
     }
   };
 
@@ -74,9 +127,11 @@ const Chatbox = () => {
 
         {/* Header Section */}
         <View style={styles.header}>
-          <TouchableOpacity style={styles.backButton}>
-            <Image
-              source={require('../assets/images/back.png')} // Replace with your back button icon path
+          <TouchableOpacity onPress={() => {
+            navigation.goBack();
+          }} style={styles.backButton}>
+            <Icon
+              name="angle-left"
               style={styles.iconImage} // Using the correct style here
             />
           </TouchableOpacity>
@@ -86,15 +141,15 @@ const Chatbox = () => {
               source={require('../assets/images/user.png')} // Replace with the user image path
               style={styles.userImage}
             />
-            <Text style={styles.userName}>John Doe</Text>
+            <Text style={styles.userName}>{receiveUser?.email}</Text>
           </View>
 
-
-          <View style={styles.userInfo}>
+          <View style={styles.videoCallIcon}>
             <Image
-              source={require('../assets/images/videocall.png')} // Replace with the video call image path
+              source={require('../assets/images/video_call.png')} // Replace with the user image path
               style={styles.userImage}
             />
+
           </View>
 
           {/* Three-Dot Button for Theme Selection */}
@@ -131,7 +186,7 @@ const Chatbox = () => {
         <FlatList
           data={messages}
           renderItem={renderMessage}
-          keyExtractor={(item) => item.id}
+          keyExtractor={(item) => item._id}
           contentContainerStyle={styles.messageList}
         />
 
@@ -166,38 +221,41 @@ const styles = StyleSheet.create({
     padding: 10,
     backgroundColor: 'rgba(0, 0, 0, 0.5)', // Semi-transparent background
   },
+
+  videoCallIcon: {
+    marginLeft: 8,
+    marginRight: -70,
+
+  },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingBottom: 10,
+    paddingBottom: 0,
   },
   backButton: {
     paddingRight: 0,
-
+    paddingTop: 2,
+    marginRight: -20,
     justifyContent: 'center',
-    paddingTop:2,
   },
   userInfo: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginLeft: -5,
+    marginLeft: -35,
+    marginRight: 20,
   },
   userImage: {
     width: 30,
 
     height: 30,
     borderRadius: 20,
-    marginRight:10,
+    marginRight: 10,
 
   },
   userName: {
     color: '#fff',
-    fontSize: 18,
-
-    marginRight: 50,
-
-    marginLeft: 10,
+    fontSize: 12,
 
   },
   threeDotButton: {
@@ -242,7 +300,7 @@ const styles = StyleSheet.create({
   triangleTheirMessage: {
     position: 'absolute',
 
-    top:1,
+    top: 1,
     left: -3,
     width: 0,
     height: 2,
@@ -264,8 +322,9 @@ const styles = StyleSheet.create({
 
   // Icon image style
   iconImage: {
-    width: 20,
-    height: 20,
+    fontSize: 40,
+
+    color: "white"
   },
 
   // Modal styles

@@ -10,40 +10,40 @@ import {
   Dimensions,
   Animated,
   Alert,
+  Platform,
 } from 'react-native';
-import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+
+import Icon from 'react-native-vector-icons/FontAwesome5';
 import 'react-native-gesture-handler';
 import 'react-native-reanimated';
+import { NavigationProp, RouteProp, useNavigation } from '@react-navigation/native';
+import { useConvexAuth, useQuery } from 'convex/react';
+import { api } from '../convex/_generated/api';
+import { RootStackParamList } from '../App';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 
-const { width } = Dimensions.get('window');
+const { width, height } = Dimensions.get('window');
 
-interface Chat {
-  id: string;
-  name: string;
-  message: string;
-  time: string;
-  avatar: string;
-}
+type chatScreenProp = NativeStackNavigationProp<RootStackParamList, "Chat">
 
-const initialChats: Chat[] = [
-  { id: '1', name: 'Tamuna12', message: 'You: ❤️', time: '12:21 PM', avatar: 'https://via.placeholder.com/50' },
-  { id: '2', name: 'George9', message: 'Yes I agree with your suggestion and...', time: '12:21 PM', avatar: 'https://via.placeholder.com/50' },
-  { id: '3', name: 'George', message: 'Yes I agree with your suggestion and...', time: '12:21 PM', avatar: 'https://via.placeholder.com/50' },
-  { id: '4', name: 'Nick', message: 'You: How are you?', time: '12:22 PM', avatar: 'https://via.placeholder.com/50' },
-  { id: '5', name: 'Anna', message: 'You: How are you? 😁', time: '12:21 PM', avatar: 'https://via.placeholder.com/50' },
-  { id: '6', name: 'Anya', message: 'Yes I agree with your suggestion and...', time: '12:21 PM', avatar: 'https://via.placeholder.com/50' },
-];
-
-const ChatScreen: React.FC = () => {
-  const [chats, setChats] = useState<Chat[]>(initialChats);
+const ChatScreen = ({ route }: { route: RouteProp<any> }) => {
+  const [chats, setChats] = useState<any[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
+  const navigation = useNavigation<chatScreenProp>();
 
-  const filteredChats = chats.filter((chat) =>
+  const user = useQuery(api.users.getUser,{
+    email:route.params!.email
+  })
+  const group = useQuery(api.groups.getGroupWithEmail,{
+    email:route.params!.email
+  })
+  
+  const filteredChats = chats.filter((chat: any) =>
     chat.name.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
   const deleteChat = (id: string) => {
-    setChats((prev) => prev.filter((chat) => chat.id !== id));
+    setChats((prev: any) => prev.filter((chat: any) => chat._id !== id));
   };
 
   const handleLongPress = (id: string) => {
@@ -85,18 +85,22 @@ const ChatScreen: React.FC = () => {
       useNativeDriver: true,
     }).start();
   }, []);
+  useEffect(()=>{
+    setChats(group?.data ?? [])
+  },[group])
 
-  const renderChatItem = ({ item }: { item: Chat }) => (
+  const renderChatItem = ({ item }: { item: any }) => (
     <TouchableOpacity
-      onLongPress={() => handleLongPress(item.id)}
+      onLongPress={() => handleLongPress(item._id)}
+      onPress={() => {
+        navigation.navigate('GroupChat', { groupId: item._id, email: route.params?.email });
+      }}
       style={styles.chatItem}
     >
-      <Image source={{ uri: item.avatar }} style={styles.avatar} />
+      <Image source={{ uri: item.avatar ?? "https://via.placeholder.com/50" }} style={styles.avatar} />
       <View style={styles.chatDetails}>
         <Text style={styles.chatName}>{item.name}</Text>
-        <Text style={styles.chatMessage}>{item.message}</Text>
       </View>
-      <Text style={styles.time}>{item.time}</Text>
     </TouchableOpacity>
   );
 
@@ -104,14 +108,15 @@ const ChatScreen: React.FC = () => {
     <View style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
-        <Image source={{ uri: 'https://via.placeholder.com/50' }} style={styles.profilePic} />
-        <Text style={styles.greeting}>Welcome, Mariam!</Text>
-        <Icon name="bell-outline" size={24} color="#FFA500" />
+        <Text style={styles.greeting}>Chat</Text>
+        <TouchableOpacity>
+          <Icon name="bell" size={24} color="#fff" />
+        </TouchableOpacity>
       </View>
 
       {/* Search Bar */}
-      <View style={styles.searchContainer}>
-        <Icon name="magnify" size={24} color="#bbb" style={styles.searchIcon} />
+      <View style={[styles.searchContainer, { width: width * 0.9 }]}>
+        <Icon name="search" size={20} color="#bbb" style={styles.searchIcon} />
         <TextInput
           placeholder="Search"
           placeholderTextColor="#bbb"
@@ -126,36 +131,32 @@ const ChatScreen: React.FC = () => {
         data={filteredChats}
         renderItem={renderChatItem}
         keyExtractor={(item) => item.id}
-        contentContainerStyle={styles.chatList}
+        contentContainerStyle={[styles.chatList, { paddingBottom: height * 0.2 }]}
       />
 
-      {/* Bottom Navigation with Animation */}
-      <Animated.View style={[styles.bottomNav, { opacity: fadeAnim }]}>
-        <TouchableOpacity>
-          <Icon name="home-outline" size={28} color="#fff" />
-          <Text style={styles.navLabel}>Home</Text>
-        </TouchableOpacity>
-        <TouchableOpacity>
-          <Icon name="phone-outline" size={28} color="#fff" />
-          <Text style={styles.navLabel}>Calls</Text>
+      {/* Floating Action Button */}
+      <TouchableOpacity style={styles.fab}>
+        <Icon name="plus" size={20} color="#fff" />
+      </TouchableOpacity>
+
+      {/* Bottom Navbar */}
+      <View style={styles.bottomNav}>
+        <TouchableOpacity style={styles.navItem}>
+          <Icon name="home" size={20} color="#bbb" />
         </TouchableOpacity>
 
-        {/* Animated Add Button */}
-        <Animated.View style={{ transform: [{ scale: scaleAnim }] }}>
-          <TouchableOpacity style={styles.addButton} onPress={handleAddButtonPress}>
-            <Icon name="plus" size={28} color="#000" />
-          </TouchableOpacity>
-        </Animated.View>
+        <TouchableOpacity style={styles.navItem}>
+          <Icon name="phone" size={20} color="#bbb" />
+        </TouchableOpacity>
 
-        <TouchableOpacity>
-          <Icon name="account-outline" size={28} color="#fff" />
-          <Text style={styles.navLabel}>Profile</Text>
+        <TouchableOpacity style={styles.navItem}>
+          <Icon name="user" size={20} color="#bbb" />
         </TouchableOpacity>
-        <TouchableOpacity>
-          <Icon name="dots-horizontal" size={28} color="#fff" />
-          <Text style={styles.navLabel}>More</Text>
+
+        <TouchableOpacity style={styles.navItem}>
+          <Icon name="money-bill-alt" size={20} color="#bbb" />
         </TouchableOpacity>
-      </Animated.View>
+      </View>
     </View>
   );
 };
@@ -164,63 +165,46 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#121212',
-    paddingHorizontal: 16,
-    paddingTop: 40,
+    alignItems: 'center',
+    paddingTop: Platform.OS === 'android' ? 40 : 20,
   },
   header: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 20,
-  },
-  profilePic: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
+    justifyContent: 'space-between',
+    width: '90%',
+    marginBottom: 16,
   },
   greeting: {
-    fontSize: 24,
+    fontSize: 20,
     fontWeight: 'bold',
-    color: '#FFA500',
-    flex: 1,
-    textAlign: 'center',
+    color: '#fff',
   },
   searchContainer: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#1E1E1E',
     borderRadius: 25,
-    paddingHorizontal: 20,
-    paddingVertical: 12,
+    padding: 8,
     marginBottom: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
-    elevation: 4,
   },
   searchIcon: {
-    marginRight: 10,
+    marginRight: 8,
   },
   searchBar: {
     flex: 1,
-    color: '#ffffff',
+    color: '#fff',
+    fontSize: 16,
   },
   chatList: {
-    paddingBottom: 80,
+    alignItems: 'center',
   },
   chatItem: {
+    width:width,
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#1E1E1E',
     padding: 16,
-    borderRadius: 12,
     marginBottom: 12,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.2,
-    shadowRadius: 4,
-    elevation: 2,
   },
   avatar: {
     width: 50,
@@ -232,44 +216,39 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   chatName: {
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: 'bold',
-    color: '#ffffff',
+    color: '#fff',
   },
-  chatMessage: {
-    fontSize: 14,
-    color: '#bbb',
-  },
-  time: {
-    fontSize: 12,
-    color: '#bbb',
+  fab: {
+    position: 'absolute',
+    bottom: 80,
+    right: 20,
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: '#DD651B',
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 5 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 5,
   },
   bottomNav: {
     position: 'absolute',
-    bottom: 20,
-    left: 0,
-    right: 0,
+    bottom: 0,
+    width: '100%',
+    height: 60,
+    backgroundColor: '#121212',
     flexDirection: 'row',
     justifyContent: 'space-around',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    backgroundColor: '#FFA500',
-    borderRadius: 25,
-    marginHorizontal: 16,
-  },
-  navLabel: {
-    fontSize: 12,
-    color: '#fff',
-    marginTop: 4,
-  },
-  addButton: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: '#fff',
-    justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 20,
+    borderTopWidth: 1,
+  },
+  navItem: {
+    alignItems: 'center',
   },
 });
 

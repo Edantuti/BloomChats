@@ -20,61 +20,30 @@ import Home from './components/homepage';
 import Login from './components/login';
 
 import Chatbox from './components/chatbox';
-import { Authenticated } from 'convex/react';
-import { useAuthActions } from '@convex-dev/auth/react';
 import { Id } from './convex/_generated/dataModel';
 import GroupComponent from './auth_components/GroupComponent';
 import Testing from './auth_components/Testing';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { NavigationContainer } from '@react-navigation/native';
 import Register from './components/register';
+import ChatScreen from './components/chatScreen';
+import { VerificationScreen } from './components/verification';
 
 export type RootStackParamList = {
   CallPage:undefined;
   Login: undefined;
-  Chat: {email:string};
+  Chat: { email: string };
   Group: undefined;
-  Register:undefined;
-  GroupChat: { groupId: Id<'groups'>; email:string};
-  Test:undefined;
+  Register: undefined;
+  Verification:{email:string, password:string, type:'signUp'|'signIn'},
+  GroupChat: { groupId: Id<'groups'>; email: string };
+  Test: undefined;
 }
 
-// export type RootStackParamList = {
-//   Login:undefined;
-//   Chat:undefined;
-// // }
-
-// <<<<<<< HEAD
-
-// function App() {
-//   return (
-//     <RootLayout>
-//       <NavigationContainer >
-//         <Stack.Navigator screenOptions={{
-//           headerShown:false
-//         }} initialRouteName='Login'>
-//           <Stack.Screen name="Login" component={SignIn} />
-//           <Stack.Screen name="Chat" component={ChatComponent} />
-//         </Stack.Navigator>
-//         </NavigationContainer>
-//     </RootLayout>)
-// =======
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
-// // const UI = false;
-
 function App() {
-  // if(!UI){
-  // return (
-  //   <RootLayout>
-  //     <NavigationContainer>
-  //       <Stack.Navigator initialRouteName='Login'>
-  //         <Stack.Screen name="Login" component={SignIn} />
-  //         <Stack.Screen name="Chat" component={ChatComponent} />
-  //       </Stack.Navigator>
-  //       </NavigationContainer>
-  //   </RootLayout>)
-  // }
+
   return (
     <RootLayout>
       <NavigationContainer >
@@ -83,11 +52,10 @@ function App() {
         }} initialRouteName='Login'>
           <Stack.Screen name="Login" component={Login} />
           <Stack.Screen name="Register" component={Register} />
-          <Stack.Screen name="Chat" component={ChatComponent} />
-          <Stack.Screen name="CallPage" component={CallPage} />
+          <Stack.Screen name="Chat" component={ChatScreen} />
           <Stack.Screen name="Test" component={Testing} />
-          <Stack.Screen name="GroupChat" component={GroupComponent}/>
-
+          <Stack.Screen name="Verification" component={VerificationScreen} />
+          <Stack.Screen name="GroupChat" component={Chatbox}/>
         </Stack.Navigator>
       </NavigationContainer>
     </RootLayout>)
