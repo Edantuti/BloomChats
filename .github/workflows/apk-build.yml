@@ -52,6 +52,11 @@ jobs:
         run: |
           npm install
 
+      - name: Make Gradle wrapper executable
+        run: |
+          cd android
+          chmod +x ./gradlew
+
       - name: Build APK
         run: |
           cd android
