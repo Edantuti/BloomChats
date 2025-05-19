@@ -1,63 +1,113 @@
 name: Android Build and Release
-
 on:
   pull_request:
     branches: [main]
+    types: [closed]
   workflow_dispatch:
+    inputs:
+      release_name:
+        description: 'Release name (optional)'
+        required: false
+        default: ''
+      version_code:
+        description: 'Version code (optional)'
+        required: false
+        default: ''
 
 jobs:
   build:
     name: Build Android APK
+    # Run on PR merge or manual dispatch
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && github.event.pull_request.merged == true)
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v3
+        with:
+          fetch-depth: 0 # Fetch all history for proper versioning
 
       - name: Set up Node.js
         uses: actions/setup-node@v3
         with:
           node-version: 18
+          cache: 'npm'
 
       - name: Set up Java (for Android build)
         uses: actions/setup-java@v3
         with:
           distribution: 'zulu'
           java-version: '17'
+          cache: 'gradle'
+
+      - name: Get version info
+        id: version
+        run: |
+          COMMIT_COUNT=$(git rev-list --count HEAD)
+          VERSION_CODE=${{ github.event.inputs.version_code || env.COMMIT_COUNT }}
+          echo "version_code=$VERSION_CODE" >> $GITHUB_OUTPUT
+          echo "build_date=$(date +'%Y%m%d')" >> $GITHUB_OUTPUT
+          echo "commit_hash=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
 
       - name: Install dependencies
         run: |
-          npm install
+          npm ci
 
       - name: Build APK
         run: |
           cd android
-          ./gradlew assembleRelease
+          ./gradlew assembleRelease --no-daemon
+
+      - name: Rename APK with version
+        run: |
+          mkdir -p dist
+          cp android/app/build/outputs/apk/release/app-release.apk dist/BloomChats-${{ steps.version.outputs.build_date }}-${{ steps.version.outputs.commit_hash }}.apk
 
       - name: Upload APK Artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: BloomChats-APK
-          path: android/app/build/outputs/apk/release/app-release.apk
+          path: dist/*.apk
+          retention-days: 7
 
   release:
     name: Create Release
     needs: build
-    if: github.event.pull_request.merged == true
     runs-on: ubuntu-latest
-
     steps:
       - name: Download built APK
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: BloomChats-APK
           path: dist/
 
+      - name: Determine release name
+        id: release_info
+        run: |
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            PR_NUM="${{ github.event.pull_request.number }}"
+            PR_TITLE="${{ github.event.pull_request.title }}"
+            echo "tag_name=pr-${PR_NUM}" >> $GITHUB_OUTPUT
+            echo "release_name=BloomChats PR #${PR_NUM}: ${PR_TITLE}" >> $GITHUB_OUTPUT
+          else
+            DATE=$(date +'%Y.%m.%d')
+            CUSTOM_NAME="${{ github.event.inputs.release_name }}"
+            if [[ -n "$CUSTOM_NAME" ]]; then
+              echo "tag_name=v-${DATE}" >> $GITHUB_OUTPUT
+              echo "release_name=${CUSTOM_NAME}" >> $GITHUB_OUTPUT
+            else
+              echo "tag_name=v-${DATE}" >> $GITHUB_OUTPUT
+              echo "release_name=BloomChats Release ${DATE}" >> $GITHUB_OUTPUT
+            fi
+          fi
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v1
         with:
-          name: "BloomChats PR #${{ github.event.pull_request.number }} Release"
-          tag_name: "pr-${{ github.event.pull_request.number }}"
-          files: dist/app-release.apk
+          name: ${{ steps.release_info.outputs.release_name }}
+          tag_name: ${{ steps.release_info.outputs.tag_name }}
+          files: dist/*.apk
+          draft: false
+          prerelease: ${{ github.event_name == 'pull_request' }}
+          generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
