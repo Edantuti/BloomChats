@@ -1,0 +1,62 @@
+name: Android Build and Release
+
+on:
+  pull_request:
+    branches: main
+
+jobs:
+  build:
+    name: Build Android APK
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v3
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: 18
+
+      - name: Set up Java (for Android build)
+        uses: actions/setup-java@v3
+        with:
+          distribution: 'zulu'
+          java-version: '17'
+
+      - name: Install dependencies
+        run: |
+          npm install
+
+      - name: Build APK
+        run: |
+          cd android
+          ./gradlew assembleRelease
+
+      - name: Upload APK Artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: BloomChats-APK
+          path: android/app/build/outputs/apk/release/app-release.apk
+
+  release:
+    name: Create Release
+    needs: build
+    if: github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download built APK
+        uses: actions/download-artifact@v3
+        with:
+          name: BloomChats-APK
+          path: dist/
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          name: "BloomChats PR #${{ github.event.pull_request.number }} Release"
+          tag_name: "pr-${{ github.event.pull_request.number }}"
+          files: dist/app-release.apk
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
