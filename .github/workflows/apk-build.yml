@@ -1,78 +1,75 @@
-name: Android App Screenshot Test
+name: Android Build and Release
 on:
+  pull_request:
+    branches: [main]
+    types: [closed]
   workflow_dispatch:
-
-permissions:
-  contents: write
+    inputs:
+      release_name:
+        description: 'Release name (optional)'
+        required: false
+        default: ''
+      version_code:
+        description: 'Version code (optional)'
+        required: false
+        default: ''
 
 jobs:
-  emulator-test:
-    runs-on: macos-latest
+  build:
+    name: Build Android APK
+    # Run on PR merge or manual dispatch
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && github.event.pull_request.merged == true)
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout Repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0 # Fetch all history for proper versioning
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v3
         with:
           node-version: 18
           cache: 'npm'
 
-      - name: Install dependencies
-        run: npm install
-
-      - name: Set up JDK
+      - name: Set up Java (for Android build)
         uses: actions/setup-java@v3
         with:
           distribution: 'zulu'
           java-version: '17'
-          
-      - name: Setup Android SDK
-        uses: android-actions/setup-android@v2
-        
+          cache: 'gradle'
+
+      - name: Get version info
+        id: version
+        run: |
+          COMMIT_COUNT=$(git rev-list --count HEAD)
+          VERSION_CODE=${{ github.event.inputs.version_code || env.COMMIT_COUNT }}
+          echo "version_code=$VERSION_CODE" >> $GITHUB_OUTPUT
+          echo "build_date=$(date +'%Y%m%d')" >> $GITHUB_OUTPUT
+          echo "commit_hash=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
+
+      - name: Install dependencies
+        run: |
+          npm install
+
       - name: Make Gradle wrapper executable
-        run: chmod +x ./android/gradlew
-        
-      - name: Accept Android SDK licenses
-        run: yes | sdkmanager --licenses
+        run: |
+          cd android
+          chmod +x ./gradlew
 
-      - name: Install and start Android emulator
-        uses: reactivecircus/android-emulator-runner@v2
-        with:
-          api-level: 30
-          arch: x86_64
-          profile: Nexus 6
-          script: |
-            # Start Metro bundler in background
-            npm start &
-            
-            # Wait for Metro to start
-            sleep 30
-            
-            # Install app on emulator
-            cd android && ./gradlew installDebug
-            
-            # Launch app
-            adb shell monkey -p com.bloomchats -c android.intent.category.LAUNCHER 1
-            
-            # Wait for app to stabilize
-            sleep 20
-            
-            # Take screenshot
-            adb shell screencap -p /sdcard/screen.png
-            
-            # Pull screenshot from device
-            adb pull /sdcard/screen.png
-            
-            echo "Screenshot captured at ./screen.png"
+      - name: Build APK
+        run: |
+          cd android
+          ./gradlew assembleRelease --no-daemon
 
-      - name: Upload screenshot
+      - name: Rename APK with version
+        run: |
+          mkdir -p dist
+          cp android/app/build/outputs/apk/release/app-release.apk dist/BloomChats-${{ steps.version.outputs.build_date }}-${{ steps.version.outputs.commit_hash }}.apk
+
+      - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: app-screenshot
-          path: screen.png
-          
-      - name: Add screenshot to summary
-        run: |
-          echo "## App Screenshot" >> $GITHUB_STEP_SUMMARY
-          echo "![App Screenshot](./screen.png)" >> $GITHUB_STEP_SUMMARY
+          name: BloomChats-APK
+          path: dist/*.apk
+          retention-days: 7
