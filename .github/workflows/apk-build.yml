@@ -2,7 +2,8 @@ name: Android Build and Release
 
 on:
   pull_request:
-    branches: main
+    branches: [main]
+  workflow_dispatch:
 
 jobs:
   build:
