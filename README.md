@@ -1,4 +1,4 @@
-# Bloom Chats
+# Bloom Chats 
 
 *Bloom Chats* is a secure and feature-rich messaging app built with React Native for cross-platform functionality. Designed to prioritize user privacy and security, Bloom Chats offers encrypted messaging, group chat management, bill-splitting capabilities, media sharing, and customizable chat templates.
 
